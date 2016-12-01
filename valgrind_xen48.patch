@@ -1,0 +1,308 @@
+Index: coregrind/m_syswrap/syswrap-xen.c
+===================================================================
+--- coregrind/m_syswrap/syswrap-xen.c	(revision 15943)
++++ coregrind/m_syswrap/syswrap-xen.c	(working copy)
+@@ -532,6 +532,7 @@
+    case VKI_XENVER_pagesize:
+    case VKI_XENVER_guest_handle:
+    case VKI_XENVER_commandline:
++   case VKI_XENVER_build_id:
+       /* No inputs */
+       break;
+ 
+@@ -584,6 +585,8 @@
+    case 0x00000009:
+    case 0x0000000a:
+    case 0x0000000b:
++   case 0x0000000c:
++   case 0x0000000d:
+ 	   break;
+    default:
+       bad_intf_version(tid, layout, arrghs, status, flags,
+@@ -626,6 +629,8 @@
+ 	 break;
+       case 0x0000000a:
+       case 0x0000000b:
++      case 0x0000000c:
++      case 0x0000000d:
+ 	 PRE_XEN_SYSCTL_READ(getdomaininfolist_0000000a, first_domain);
+ 	 PRE_XEN_SYSCTL_READ(getdomaininfolist_0000000a, max_domains);
+ 	 PRE_XEN_SYSCTL_READ(getdomaininfolist_0000000a, buffer);
+@@ -728,6 +733,9 @@
+    case 0x00000008:
+    case 0x00000009:
+    case 0x0000000a:
++   case 0x0000000b:
++   case 0x0000000c:
++   case 0x0000000d:
+ 	   break;
+    default:
+       bad_intf_version(tid, layout, arrghs, status, flags,
+@@ -1161,6 +1169,11 @@
+                    domctl->u.vcpu_msrs.msr_count);
+       break;
+ 
++    case VKI_XEN_DOMCTL_monitor_op:
++      PRE_XEN_DOMCTL_READ(monitor_op, op);
++      PRE_XEN_DOMCTL_READ(monitor_op, event);
++      break;
++
+    default:
+       bad_subop(tid, layout, arrghs, status, flags,
+                 "__HYPERVISOR_domctl", domctl->cmd);
+@@ -1263,6 +1276,40 @@
+       PRE_XEN_HVMOP_READ(inject_trap, cr2);
+       break;
+ 
++   case VKI_XEN_HVMOP_altp2m: {
++      vki_xen_hvm_altp2m_t *Arg =
++         (vki_xen_hvm_altp2m_t*)ARG2;
++      PRE_XEN_HVMOP_READ(altp2m, version);
++      PRE_XEN_HVMOP_READ(altp2m, cmd);
++      PRE_XEN_HVMOP_READ(altp2m, domain);
++
++      switch ( Arg->cmd ) {
++      case VKI_XEN_HVMOP_altp2m_get_domain_state:
++      case VKI_XEN_HVMOP_altp2m_set_domain_state:
++         PRE_XEN_HVMOP_READ(altp2m, u.domain_state.state);
++         break;
++      case VKI_XEN_HVMOP_altp2m_vcpu_enable_notify:
++         PRE_XEN_HVMOP_READ(altp2m, u.enable_notify.vcpu_id);
++         PRE_XEN_HVMOP_READ(altp2m, u.enable_notify.gfn);
++         break;
++      case VKI_XEN_HVMOP_altp2m_create_p2m:
++      case VKI_XEN_HVMOP_altp2m_destroy_p2m:
++      case VKI_XEN_HVMOP_altp2m_switch_p2m:
++         PRE_XEN_HVMOP_READ(altp2m, u.view.view);
++         break;
++      case VKI_XEN_HVMOP_altp2m_set_mem_access:
++         PRE_XEN_HVMOP_READ(altp2m, u.set_mem_access.view);
++         PRE_XEN_HVMOP_READ(altp2m, u.set_mem_access.hvmmem_access);
++         PRE_XEN_HVMOP_READ(altp2m, u.set_mem_access.gfn);
++         break;
++      case VKI_XEN_HVMOP_altp2m_change_gfn:
++         PRE_XEN_HVMOP_READ(altp2m, u.change_gfn.view);
++         PRE_XEN_HVMOP_READ(altp2m, u.change_gfn.old_gfn);
++         PRE_XEN_HVMOP_READ(altp2m, u.change_gfn.new_gfn);
++         break;
++      };
++     }
++     break;
+    default:
+       bad_subop(tid, layout, arrghs, status, flags,
+                 "__HYPERVISOR_hvm_op", op);
+Index: include/vki/vki-xen-domctl.h
+===================================================================
+--- include/vki/vki-xen-domctl.h	(revision 15943)
++++ include/vki/vki-xen-domctl.h	(working copy)
+@@ -116,6 +116,11 @@
+ #define VKI_XEN_DOMCTL_cacheflush                    71
+ #define VKI_XEN_DOMCTL_get_vcpu_msrs                 72
+ #define VKI_XEN_DOMCTL_set_vcpu_msrs                 73
++#define VKI_XEN_DOMCTL_setvnumainfo                  74
++#define VKI_XEN_DOMCTL_psr_cmt_op                    75
++#define VKI_XEN_DOMCTL_monitor_op                    77
++#define VKI_XEN_DOMCTL_psr_cat_op                    78
++#define VKI_XEN_DOMCTL_soft_reset                    79
+ #define VKI_XEN_DOMCTL_gdbsx_guestmemio            1000
+ #define VKI_XEN_DOMCTL_gdbsx_pausevcpu             1001
+ #define VKI_XEN_DOMCTL_gdbsx_unpausevcpu           1002
+@@ -187,6 +192,9 @@
+ DEFINE_VKI_XEN_GUEST_HANDLE(vki_xen_domctl_getdomaininfo_00000009_t);
+ 
+ /* vki_xen_domctl_getdomaininfo_0000000a is the same as 00000009 */
++/* vki_xen_domctl_getdomaininfo_0000000b is the same as 00000009 */
++/* vki_xen_domctl_getdomaininfo_0000000c is the same as 00000009 */
++/* vki_xen_domctl_getdomaininfo_0000000d is the same as 00000009 */
+ 
+ /* Get/set the NUMA node(s) with which the guest has affinity with. */
+ /* XEN_DOMCTL_setnodeaffinity */
+@@ -468,6 +476,27 @@
+     VKI_XEN_GUEST_HANDLE_64(vki_xen_domctl_vcpu_msr_t) msrs;
+ };
+ 
++struct xen_domctl_monitor_op {
++    vki_uint32_t op;
++    vki_uint32_t event;
++        union {
++        struct {
++            vki_uint8_t index;
++            vki_uint8_t sync;
++            vki_uint8_t onchangeonly;
++        } mov_to_cr;
++        struct {
++            vki_uint32_t msr;
++        } mov_to_msr;
++        struct {
++            vki_uint8_t sync;
++        } guest_request;
++        struct {
++            vki_uint8_t sync;
++        } debug_exception;
++    } u;
++};
++
+ struct vki_xen_domctl {
+     vki_uint32_t cmd;
+     vki_uint32_t interface_version; /* XEN_DOMCTL_INTERFACE_VERSION */
+@@ -532,6 +561,7 @@
+         struct vki_xen_domctl_cacheflush        cacheflush;
+         //struct vki_xen_domctl_gdbsx_pauseunp_vcpu gdbsx_pauseunp_vcpu;
+         //struct vki_xen_domctl_gdbsx_domstatus   gdbsx_domstatus;
++        struct xen_domctl_monitor_op monitor_op;
+         vki_uint8_t                         pad[128];
+     } u;
+ };
+Index: include/vki/vki-xen-hvm.h
+===================================================================
+--- include/vki/vki-xen-hvm.h	(revision 15943)
++++ include/vki/vki-xen-hvm.h	(working copy)
+@@ -108,6 +108,70 @@
+ };
+ typedef struct vki_xen_hvm_inject_trap vki_xen_hvm_inject_trap_t;
+ 
++#define VKI_XEN_HVMOP_altp2m                         25
++#define VKI_XEN_HVMOP_altp2m_get_domain_state     1
++#define VKI_XEN_HVMOP_altp2m_set_domain_state     2
++#define VKI_XEN_HVMOP_altp2m_vcpu_enable_notify   3
++#define VKI_XEN_HVMOP_altp2m_create_p2m           4
++#define VKI_XEN_HVMOP_altp2m_destroy_p2m          5
++#define VKI_XEN_HVMOP_altp2m_switch_p2m           6
++#define VKI_XEN_HVMOP_altp2m_set_mem_access       7
++#define VKI_XEN_HVMOP_altp2m_change_gfn           8
++struct vki_xen_hvm_altp2m_domain_state {
++    /* IN or OUT variable on/off */
++    vki_uint8_t state;
++};
++typedef struct vki_xen_hvm_altp2m_domain_state vki_xen_hvm_altp2m_domain_state_t;
++struct vki_xen_hvm_altp2m_vcpu_enable_notify {
++    vki_uint32_t vcpu_id;
++    vki_uint32_t pad;
++    /* #VE info area gfn */
++    vki_uint64_t gfn;
++};
++typedef struct vki_xen_hvm_altp2m_vcpu_enable_notify vki_xen_hvm_altp2m_vcpu_enable_notify_t;
++struct vki_xen_hvm_altp2m_view {
++    /* IN/OUT variable */
++    vki_uint16_t view;
++    /* Create view only: default access type
++     * NOTE: currently ignored */
++    vki_uint16_t hvmmem_default_access; /* xenmem_access_t */
++};
++typedef struct vki_xen_hvm_altp2m_view vki_xen_hvm_altp2m_view_t;
++struct vki_xen_hvm_altp2m_set_mem_access {
++    /* view */
++    vki_uint16_t view;
++    /* Memory type */
++    vki_uint16_t hvmmem_access; /* xenmem_access_t */
++    vki_uint32_t pad;
++    /* gfn */
++    vki_uint64_t gfn;
++};
++typedef struct vki_xen_hvm_altp2m_set_mem_access vki_xen_hvm_altp2m_set_mem_access_t;
++struct vki_xen_hvm_altp2m_change_gfn {
++    vki_uint16_t view;
++    vki_uint16_t pad1;
++    vki_uint32_t pad2;
++    vki_uint64_t old_gfn;
++    vki_uint64_t new_gfn;
++};
++typedef struct vki_xen_hvm_altp2m_change_gfn vki_xen_hvm_altp2m_change_gfn_t;
++struct vki_xen_hvm_altp2m {
++    vki_uint32_t version;
++    vki_uint32_t cmd;
++    vki_uint16_t domain;
++    vki_uint16_t pad1;
++    vki_uint32_t pad2;
++    union {
++        struct vki_xen_hvm_altp2m_domain_state       domain_state;
++        struct vki_xen_hvm_altp2m_vcpu_enable_notify enable_notify;
++        struct vki_xen_hvm_altp2m_view               view;
++        struct vki_xen_hvm_altp2m_set_mem_access     set_mem_access;
++        struct vki_xen_hvm_altp2m_change_gfn         change_gfn;
++        vki_uint8_t pad[64];
++    } u;
++};
++typedef struct vki_xen_hvm_altp2m vki_xen_hvm_altp2m_t;
++
+ #endif // __VKI_XEN_HVM_H
+ 
+ /*--------------------------------------------------------------------*/
+Index: include/vki/vki-xen-sysctl.h
+===================================================================
+--- include/vki/vki-xen-sysctl.h	(revision 15943)
++++ include/vki/vki-xen-sysctl.h	(working copy)
+@@ -64,7 +64,7 @@
+     /* IN variables. */
+     vki_xen_domid_t           first_domain;
+     vki_uint32_t              max_domains;
+-    VKI_XEN_GUEST_HANDLE_64(vki_xen_domctl_getdomaininfo_00000007_t) buffer;
++    VKI_XEN_GUEST_HANDLE_64(vki_xen_domctl_getdomaininfo_00000008_t) buffer;
+     /* OUT variables. */
+     vki_uint32_t              num_domains;
+ };
+@@ -73,7 +73,7 @@
+     /* IN variables. */
+     vki_xen_domid_t           first_domain;
+     vki_uint32_t              max_domains;
+-    VKI_XEN_GUEST_HANDLE_64(vki_xen_domctl_getdomaininfo_00000008_t) buffer;
++    VKI_XEN_GUEST_HANDLE_64(vki_xen_domctl_getdomaininfo_00000009_t) buffer;
+     /* OUT variables. */
+     vki_uint32_t              num_domains;
+ };
+@@ -87,6 +87,33 @@
+     vki_uint32_t              num_domains;
+ };
+ 
++struct vki_xen_sysctl_getdomaininfolist_0000000b {
++    /* IN variables. */
++    vki_xen_domid_t           first_domain;
++    vki_uint32_t              max_domains;
++    VKI_XEN_GUEST_HANDLE_64(vki_xen_domctl_getdomaininfo_00000009_t) buffer;
++    /* OUT variables. */
++    vki_uint32_t              num_domains;
++};
++
++struct vki_xen_sysctl_getdomaininfolist_0000000c {
++    /* IN variables. */
++    vki_xen_domid_t           first_domain;
++    vki_uint32_t              max_domains;
++    VKI_XEN_GUEST_HANDLE_64(vki_xen_domctl_getdomaininfo_00000009_t) buffer;
++    /* OUT variables. */
++    vki_uint32_t              num_domains;
++};
++
++struct vki_xen_sysctl_getdomaininfolist_0000000d {
++    /* IN variables. */
++    vki_xen_domid_t           first_domain;
++    vki_uint32_t              max_domains;
++    VKI_XEN_GUEST_HANDLE_64(vki_xen_domctl_getdomaininfo_00000009_t) buffer;
++    /* OUT variables. */
++    vki_uint32_t              num_domains;
++};
++
+ /* vki_xen_sysctl_getdomaininfolist_0000000b is the same as 0000000a */
+ 
+ #define VKI_XEN_SYSCTL_CPUPOOL_OP_CREATE                1  /* C */
+@@ -181,6 +208,9 @@
+         struct vki_xen_sysctl_getdomaininfolist_00000008 getdomaininfolist_00000008;
+         struct vki_xen_sysctl_getdomaininfolist_00000009 getdomaininfolist_00000009;
+         struct vki_xen_sysctl_getdomaininfolist_0000000a getdomaininfolist_0000000a;
++        struct vki_xen_sysctl_getdomaininfolist_0000000b getdomaininfolist_0000000b;
++        struct vki_xen_sysctl_getdomaininfolist_0000000c getdomaininfolist_0000000c;
++        struct vki_xen_sysctl_getdomaininfolist_0000000d getdomaininfolist_0000000d;
+         struct vki_xen_sysctl_debug_keys        debug_keys;
+         //struct vki_xen_sysctl_getcpuinfo        getcpuinfo;
+         //struct vki_xen_sysctl_availheap         availheap;
+Index: include/vki/vki-xen-version.h
+===================================================================
+--- include/vki/vki-xen-version.h	(revision 15943)
++++ include/vki/vki-xen-version.h	(working copy)
+@@ -38,6 +38,7 @@
+ #define VKI_XENVER_pagesize 7
+ #define VKI_XENVER_guest_handle 8
+ #define VKI_XENVER_commandline 9
++#define VKI_XENVER_build_id 10
+ 
+ typedef char vki_xen_extraversion_t[16];
+ 
